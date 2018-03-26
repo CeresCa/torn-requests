@@ -1,17 +1,15 @@
-#!/usr/bin/env python
-# -*- coding:utf-8 -*-
-
 import json
 import logging
+import pprint
 import tornado.escape
 import tornado.gen
 import tornado.httpclient
 import tornado.web
-from urllib import urllib
+from urllib import parse as urllib
 
 
 def encode_multipart_formdata(fields, files):
-    '''拼接multipart/form-data类型的HTTP请求中body，
+    '''参考urllib，拼接multipart/form-data类型的HTTP请求中body，
        返回拼接的body内容及Content-Type'''
     boundary = '----------ThIs_Is_tHe_bouNdaRY_$'
     crlf = '\r\n'
@@ -41,16 +39,17 @@ def encode_multipart_formdata(fields, files):
 
 def get_content_type(filename):
     import mimetypes
-
     return mimetypes.guess_type(filename)[0] or 'application/octet-stream'
 
 
 def encoded_dict(in_dict):
+    if not in_dict:
+        return
     out_dict = {}
-    for k, v in in_dict.iteritems():
-        if isinstance(v, unicode):
+    for k, v in in_dict.items():
+        if isinstance(v, str):
             v = v.encode('utf8')
-        elif isinstance(v, str):
+        elif isinstance(v, bytes):
             # Must be encoded in UTF-8
             v.decode('utf8')
         out_dict[k] = v
@@ -59,46 +58,66 @@ def encoded_dict(in_dict):
 
 class HttpclientUtil(object):
 
-    def req(self, url, method='GET', params=None, data=None, json_=None, headers=None, body_=None):
+    def req(self, url, method='GET', params=None, form_data=None, json_data=None, raw_body=None, headers=None):
         http_client = tornado.httpclient.AsyncHTTPClient(max_clients=5000)
-        query_string = urllib.urlencode(encoded_dict(params))
+        if params:
+            query_string = urllib.urlencode(encoded_dict(params))
+        else:
+            query_string = ''
         url = u'{url}?{query_string}'.format(
             url=url, query_string=query_string)
         logging.info(u'请求的url {}: {}, headers {}'.format(method, url, headers))
-
+        if not headers:
+            headers = {}
         if method in ('GET', 'DELETE'):
-            request = tornado.httpclient.HTTPRequest(url=url,
-                                                     method=method,
-                                                     validate_cert=False,
-                                                     headers=headers,
-                                                     request_timeout=3.0,
-                                                     connect_timeout=3.0)
-            return http_client.fetch(request)
+            body = None
         elif method in ('POST', 'PUT'):
-            if data:
-                data = encoded_dict(data)
-                body = urllib.urlencode(data)
+            if raw_body:
+                body = raw_body
+            elif form_data:
+                form_data = encoded_dict(form_data)
+                body = urllib.urlencode(form_data)
+                headers['Content-Type'] = 'application/x-www-form-urlencoded'
             else:
-                body = json.dumps(json_)
-            if body_:
-                body = body_
-            request = tornado.httpclient.HTTPRequest(url=url,
-                                                     method=method,
-                                                     body=body,
-                                                     validate_cert=False,
-                                                     headers=headers,
-                                                     request_timeout=3.0,
-                                                     connect_timeout=3.0)
-            return http_client.fetch(request)
-        else:
-            return
+                body = json.dumps(json_data)
+                headers['Content-Type'] = 'application/json'
+
+        request = tornado.httpclient.HTTPRequest(url=url,
+                                                 method=method,
+                                                 body=body,
+                                                 validate_cert=False,
+                                                 headers=headers,
+                                                 request_timeout=10.0,
+                                                 connect_timeout=10.0)
+        return http_client.fetch(request)
 
     def upload_file(self, url, file_):
-        '''上传文件'''
+        '''使用tornado AsyncHttpClient异步上传文件'''
         files = [('file', 'upload', file_)]
         fields = tuple()
         content_type, body = encode_multipart_formdata(fields, files)
         headers = {"Content-Type": content_type,
                    'content-length': str(len(body))
                    }
-        return self.req(url=url, method='POST', params={}, headers=headers, body_=body)
+        return self.req(url=url, method='POST', params={}, headers=headers, raw_body=body)
+
+
+async def main():
+    get_url = 'http://httpbin.org/get'
+    http_client = HttpclientUtil()
+    get_rsp = await http_client.req(get_url, method='GET', params={'foor': 'bar', '好': '👌'})
+    if not get_rsp.error:
+        pprint.pprint(get_rsp.body)
+    else:
+        print(get_rsp)
+
+    post_url = 'http://httpbin.org/post'
+    post_rsp = await http_client.req(post_url, method='POST', json_data={'foor': 'bar', '好': '👌'})
+    if not post_rsp.error:
+        pprint.pprint(post_rsp.body)
+    else:
+        print(post_rsp)
+
+if __name__ == '__main__':
+    io_loop = tornado.ioloop.IOLoop.current()
+    io_loop.run_sync(main)
