@@ -76,7 +76,7 @@ class Requests(object):
         )
         return self.httpclient.fetch(request)
 
-    def upload_file(self, url, files):
+    def upload_file(self, url, files, connect_timeout=60, request_timeout=60):
         """使用tornado AsyncHttpClient异步上传文件
            files = [("fieldname", "filename", file_body)]
         """
@@ -84,37 +84,11 @@ class Requests(object):
         content_type, body = encode_multipart_formdata(fields, files)
         headers = {"Content-Type": content_type, "content-length": str(len(body))}
         return self.request(
-            url=url, method="POST", params={}, headers=headers, raw_body=body
+            url=url,
+            method="POST",
+            params={},
+            headers=headers,
+            raw_body=body,
+            connect_timeout=connect_timeout,
+            request_timeout=request_timeout,
         )
-
-
-async def main():
-    get_url = "http://httpbin.org/get"
-    requests = Requests()
-    get_rsp = await requests.request(
-        get_url,
-        method="GET",
-        params={"foor": "bar", "好": "👌"},
-        connect_timeout=5,
-        request_timeout=10,
-    )
-    print(get_rsp)
-    print(get_rsp.headers)
-    print(get_rsp.body)
-
-    post_url = "http://httpbin.org/post"
-    post_rsp = await requests.request(
-        post_url,
-        method="POST",
-        to_json={"foor": "bar", "好": "👌"},
-        connect_timeout=10,
-        request_timeout=10,
-    )
-    print(post_rsp)
-    print(post_rsp.headers)
-    print(post_rsp.body)
-
-
-if __name__ == "__main__":
-    io_loop = tornado.ioloop.IOLoop.current()
-    io_loop.run_sync(main)
