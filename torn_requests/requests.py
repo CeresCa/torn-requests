@@ -76,7 +76,7 @@ class Requests(object):
         )
         return self.httpclient.fetch(request)
 
-    def upload_file(self, url, files):
+    def upload_file(self, url, files, connect_timeout=60, request_timeout=60):
         """使用tornado AsyncHttpClient异步上传文件
            files = [("fieldname", "filename", file_body)]
         """
@@ -84,7 +84,13 @@ class Requests(object):
         content_type, body = encode_multipart_formdata(fields, files)
         headers = {"Content-Type": content_type, "content-length": str(len(body))}
         return self.request(
-            url=url, method="POST", params={}, headers=headers, raw_body=body
+            url=url,
+            method="POST",
+            params={},
+            headers=headers,
+            raw_body=body,
+            connect_timeout=connect_timeout,
+            request_timeout=request_timeout,
         )
 
 
